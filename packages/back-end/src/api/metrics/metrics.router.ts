@@ -2,6 +2,7 @@ import { Router } from "express";
 import { getMetric } from "./getMetric";
 import { listMetrics } from "./listMetrics";
 import { postMetric } from "./postMetric";
+import { deleteMetric } from "./deleteMetric";
 
 const router = Router();
 
@@ -10,5 +11,6 @@ const router = Router();
 router.get("/", listMetrics);
 router.get("/:id", getMetric);
 router.post("/", postMetric);
+router.delete("/:id", deleteMetric);
 
 export default router;
