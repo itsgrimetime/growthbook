@@ -12,7 +12,6 @@ import { GiPieChart } from "react-icons/gi";
 import { HiCursorClick } from "react-icons/hi";
 import { ExperimentSnapshotInterface } from "back-end/types/experiment-snapshot";
 import { DifferenceType, StatsEngine } from "back-end/types/stats";
-import { MetricRegressionAdjustmentStatus } from "back-end/types/report";
 import { ago, datetime } from "shared/dates";
 import clsx from "clsx";
 import { useDefinitions } from "@/services/DefinitionsContext";
@@ -31,16 +30,14 @@ import RunQueriesButton, {
 import RefreshSnapshotButton from "@/components/Experiment/RefreshSnapshotButton";
 import usePermissions from "@/hooks/usePermissions";
 import ViewAsyncQueriesButton from "@/components/Queries/ViewAsyncQueriesButton";
-import FactBadge from "@/components/FactTables/FactBadge";
-import AnalysisForm from "../AnalysisForm";
+import MetricName from "@/components/Metrics/MetricName";
+import AnalysisForm from "@/components/Experiment/AnalysisForm";
 import OverflowText from "./OverflowText";
 
 export interface Props {
   experiment: ExperimentInterfaceStringDates;
   mutate: () => void;
   statsEngine: StatsEngine;
-  regressionAdjustmentEnabled?: boolean;
-  metricRegressionAdjustmentStatuses?: MetricRegressionAdjustmentStatus[];
   editMetrics?: () => void;
   setVariationFilter?: (variationFilter: number[]) => void;
   baselineRow?: number;
@@ -52,8 +49,6 @@ export default function AnalysisSettingsSummary({
   experiment,
   mutate,
   statsEngine,
-  regressionAdjustmentEnabled,
-  metricRegressionAdjustmentStatuses,
   editMetrics,
   setVariationFilter,
   baselineRow,
@@ -173,12 +168,7 @@ export default function AnalysisSettingsSummary({
   }
   if (activationMetric) {
     items.push({
-      value: (
-        <>
-          {activationMetric.name}
-          <FactBadge metricId={activationMetric.id} />
-        </>
-      ),
+      value: <MetricName id={activationMetric.id} />,
       icon: <HiCursorClick className="mr-1" />,
       tooltip: "Activation Metric",
     });
@@ -352,9 +342,6 @@ export default function AnalysisSettingsSummary({
                         body: JSON.stringify({
                           phase,
                           dimension,
-                          statsEngine,
-                          regressionAdjustmentEnabled,
-                          metricRegressionAdjustmentStatuses,
                         }),
                       }
                     )
@@ -400,11 +387,7 @@ export default function AnalysisSettingsSummary({
                   experiment={experiment}
                   lastAnalysis={analysis}
                   dimension={dimension}
-                  statsEngine={statsEngine}
-                  regressionAdjustmentEnabled={regressionAdjustmentEnabled}
-                  metricRegressionAdjustmentStatuses={
-                    metricRegressionAdjustmentStatuses
-                  }
+                  setAnalysisSettings={setAnalysisSettings}
                   onSubmit={() => {
                     if (baselineRow !== 0) {
                       setBaselineRow?.(0);
@@ -468,13 +451,16 @@ export default function AnalysisSettingsSummary({
                         body: JSON.stringify({
                           phase,
                           dimension,
-                          statsEngine,
-                          regressionAdjustmentEnabled,
-                          metricRegressionAdjustmentStatuses,
                         }),
                       }
                     )
                       .then((res) => {
+                        setAnalysisSettings(null);
+                        if (baselineRow !== 0) {
+                          setBaselineRow?.(0);
+                          setVariationFilter?.([]);
+                        }
+                        setDifferenceType("relative");
                         trackSnapshot(
                           "create",
                           "ForceRerunQueriesButton",

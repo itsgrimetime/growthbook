@@ -1,9 +1,11 @@
 import {
+  DEFAULT_METRIC_WINDOW,
+  DEFAULT_METRIC_WINDOW_DELAY_HOURS,
+  DEFAULT_METRIC_WINDOW_HOURS,
   DEFAULT_REGRESSION_ADJUSTMENT_DAYS,
   DEFAULT_STATS_ENGINE,
 } from "shared/constants";
 import {
-  getConversionWindowHours,
   isFactMetric,
   isBinomialMetric,
   ExperimentMetricInterface,
@@ -53,6 +55,8 @@ function getMetricRegressionAdjustmentStatusesFromSnapshot(
         (analysisSettings.regressionAdjusted &&
           m.computedSettings?.regressionAdjustmentEnabled) ||
         false,
+      regressionAdjustmentAvailable:
+        m.computedSettings?.regressionAdjustmentAvailable ?? true,
     };
   });
 }
@@ -96,6 +100,21 @@ export function reportArgsFromSnapshot(
   };
 }
 
+export function getAnalysisSettingsFromReportArgs(
+  args: ExperimentReportArgs
+): ExperimentSnapshotAnalysisSettings {
+  return {
+    dimensions: args.dimension ? [args.dimension] : [],
+    statsEngine: args.statsEngine || DEFAULT_STATS_ENGINE,
+    regressionAdjusted: args.regressionAdjustmentEnabled,
+    pValueCorrection: null,
+    sequentialTesting: args.sequentialTestingEnabled,
+    sequentialTestingTuningParameter: args.sequentialTestingTuningParameter,
+    pValueThreshold: args.pValueThreshold,
+    differenceType: "relative",
+    baselineVariationIndex: 0,
+  };
+}
 export function getSnapshotSettingsFromReportArgs(
   args: ExperimentReportArgs,
   metricMap: Map<string, ExperimentMetricInterface>
@@ -137,17 +156,7 @@ export function getSnapshotSettingsFromReportArgs(
     })),
     coverage: args.coverage,
   };
-  // TODO: add baselineVariation here
-  const analysisSettings: ExperimentSnapshotAnalysisSettings = {
-    dimensions: args.dimension ? [args.dimension] : [],
-    statsEngine: args.statsEngine || DEFAULT_STATS_ENGINE,
-    regressionAdjusted: args.regressionAdjustmentEnabled,
-    pValueCorrection: null,
-    sequentialTesting: args.sequentialTestingEnabled,
-    sequentialTestingTuningParameter: args.sequentialTestingTuningParameter,
-    pValueThreshold: args.pValueThreshold,
-    differenceType: "relative",
-  };
+  const analysisSettings = getAnalysisSettingsFromReportArgs(args);
 
   return { snapshotSettings, analysisSettings };
 }
@@ -171,22 +180,37 @@ export function getMetricForSnapshot(
       datasource: metric.datasource,
       type: isBinomialMetric(metric) ? "binomial" : "count",
       aggregation: ("aggregation" in metric && metric.aggregation) || undefined,
-      capping: metric.capping || null,
-      capValue: metric.capValue || undefined,
+      cappingSettings: metric.cappingSettings,
       denominator: (!isFactMetric(metric) && metric.denominator) || undefined,
       sql: (!isFactMetric(metric) && metric.sql) || undefined,
       userIdTypes: (!isFactMetric(metric) && metric.userIdTypes) || undefined,
     },
     computedSettings: {
-      conversionDelayHours:
-        overrides?.conversionDelayHours ?? metric.conversionDelayHours ?? 0,
-      conversionWindowHours:
-        overrides?.conversionWindowHours ?? getConversionWindowHours(metric),
+      windowSettings: {
+        delayHours:
+          overrides?.delayHours ??
+          metric.windowSettings.delayHours ??
+          DEFAULT_METRIC_WINDOW_DELAY_HOURS,
+        type:
+          overrides?.windowType ??
+          metric.windowSettings.type ??
+          DEFAULT_METRIC_WINDOW,
+        windowUnit:
+          overrides?.windowHours || overrides?.windowType
+            ? "hours"
+            : metric.windowSettings.windowUnit ?? "hours",
+        windowValue:
+          overrides?.windowHours ??
+          metric.windowSettings.windowValue ??
+          DEFAULT_METRIC_WINDOW_HOURS,
+      },
       regressionAdjustmentDays:
         regressionAdjustmentStatus?.regressionAdjustmentDays ??
         DEFAULT_REGRESSION_ADJUSTMENT_DAYS,
       regressionAdjustmentEnabled:
         regressionAdjustmentStatus?.regressionAdjustmentEnabled ?? false,
+      regressionAdjustmentAvailable:
+        regressionAdjustmentStatus?.regressionAdjustmentAvailable ?? true,
       regressionAdjustmentReason: regressionAdjustmentStatus?.reason ?? "",
     },
   };

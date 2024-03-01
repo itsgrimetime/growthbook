@@ -16,13 +16,8 @@ import {
   FaQuestionCircle,
 } from "react-icons/fa";
 import { IdeaInterface } from "back-end/types/idea";
-import { MetricInterface } from "back-end/types/metric";
 import uniq from "lodash/uniq";
-import {
-  MetricRegressionAdjustmentStatus,
-  ReportInterface,
-} from "back-end/types/report";
-import { DEFAULT_REGRESSION_ADJUSTMENT_ENABLED } from "shared/constants";
+import { ReportInterface } from "back-end/types/report";
 import {
   getAffectedEnvsForExperiment,
   includeExperimentInPayload,
@@ -36,19 +31,18 @@ import clsx from "clsx";
 import { MdInfoOutline } from "react-icons/md";
 import {
   ExperimentMetricInterface,
+  getAllMetricRegressionAdjustmentStatuses,
   getConversionWindowHours,
   getMetricLink,
   isFactMetric,
 } from "shared/experiments";
+import { MetricInterface } from "back-end/types/metric";
 import { useDefinitions } from "@/services/DefinitionsContext";
 import usePermissions from "@/hooks/usePermissions";
 import { useAuth } from "@/services/auth";
 import useApi from "@/hooks/useApi";
 import { useUser } from "@/services/UserContext";
-import {
-  applyMetricOverrides,
-  getRegressionAdjustmentsForMetric,
-} from "@/services/experiments";
+import { applyMetricOverrides } from "@/services/experiments";
 import useSDKConnections from "@/hooks/useSDKConnections";
 import useOrgSettings from "@/hooks/useOrgSettings";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
@@ -61,31 +55,31 @@ import LinkedFeatureFlag from "@/components/Experiment/LinkedFeatureFlag";
 import track from "@/services/track";
 import { formatTrafficSplit } from "@/services/utils";
 import Results_old from "@/components/Experiment/Results_old";
-import MoreMenu from "../Dropdown/MoreMenu";
-import WatchButton from "../WatchButton";
-import SortedTags from "../Tags/SortedTags";
-import MarkdownInlineEdit from "../Markdown/MarkdownInlineEdit";
-import DiscussionThread from "../DiscussionThread";
-import HeaderWithEdit from "../Layout/HeaderWithEdit";
-import DeleteButton from "../DeleteButton/DeleteButton";
+import MoreMenu from "@/components/Dropdown/MoreMenu";
+import WatchButton from "@/components/WatchButton";
+import SortedTags from "@/components/Tags/SortedTags";
+import MarkdownInlineEdit from "@/components/Markdown/MarkdownInlineEdit";
+import DiscussionThread from "@/components/DiscussionThread";
+import HeaderWithEdit from "@/components/Layout/HeaderWithEdit";
+import DeleteButton from "@/components/DeleteButton/DeleteButton";
 import {
   GBAddCircle,
   GBCircleArrowLeft,
   GBCuped,
   GBEdit,
   GBSequential,
-} from "../Icons";
-import RightRailSection from "../Layout/RightRailSection";
-import RightRailSectionGroup from "../Layout/RightRailSectionGroup";
-import Modal from "../Modal";
-import HistoryTable from "../HistoryTable";
-import Code from "../SyntaxHighlighting/Code";
-import Tooltip from "../Tooltip/Tooltip";
-import Button from "../Button";
-import { DocLink } from "../DocLink";
-import FeatureFromExperimentModal from "../Features/FeatureModal/FeatureFromExperimentModal";
-import ConfirmButton from "../Modal/ConfirmButton";
-import { openVisualEditor } from "../OpenVisualEditorLink";
+} from "@/components/Icons";
+import RightRailSection from "@/components/Layout/RightRailSection";
+import RightRailSectionGroup from "@/components/Layout/RightRailSectionGroup";
+import Modal from "@/components/Modal";
+import HistoryTable from "@/components/HistoryTable";
+import Code from "@/components/SyntaxHighlighting/Code";
+import Tooltip from "@/components/Tooltip/Tooltip";
+import Button from "@/components/Button";
+import { DocLink } from "@/components/DocLink";
+import FeatureFromExperimentModal from "@/components/Features/FeatureModal/FeatureFromExperimentModal";
+import ConfirmButton from "@/components/Modal/ConfirmButton";
+import { openVisualEditor } from "@/components/OpenVisualEditorLink";
 import { AttributionModelTooltip } from "./AttributionModelTooltip";
 import ResultsIndicator from "./ResultsIndicator";
 import EditStatusModal from "./EditStatusModal";
@@ -114,11 +108,13 @@ function drawMetricRow(
   );
   if (!newMetric) return null;
 
-  const conversionStart = newMetric.conversionDelayHours || 0;
+  const conversionStart = newMetric.windowSettings.delayHours || 0;
   const conversionEnd =
-    (newMetric.conversionDelayHours || 0) + getConversionWindowHours(newMetric);
+    (newMetric.windowSettings.delayHours || 0) +
+    getConversionWindowHours(newMetric.windowSettings);
 
   const hasOverrides =
+    overrideFields.includes("windowType") ||
     overrideFields.includes("conversionDelayHours") ||
     (!ignoreConversionEnd && overrideFields.includes("conversionWindowHours"));
 
@@ -132,13 +128,11 @@ function drawMetricRow(
         <div className="row">
           <div className="col-auto pr-0">-</div>
           <div className="col">
-            <Link href={getMetricLink(m)}>
-              <a className="font-weight-bold">
-                {newMetric?.name}
-                {isArchived ? (
-                  <span className="text-muted small"> (archived)</span>
-                ) : null}
-              </a>
+            <Link href={getMetricLink(m)} className="font-weight-bold">
+              {newMetric?.name}
+              {isArchived ? (
+                <span className="text-muted small"> (archived)</span>
+              ) : null}
             </Link>
           </div>
         </div>
@@ -146,9 +140,12 @@ function drawMetricRow(
       <div className="col-sm-5 ml-2">
         {newMetric && (
           <div className="small">
-            {conversionStart}{" "}
-            {ignoreConversionEnd ? "" : "to " + conversionEnd + " "}
-            hours{" "}
+            <>
+              {conversionStart}{" "}
+              {ignoreConversionEnd || !newMetric.windowSettings.type
+                ? " hours to experiment end "
+                : "to " + conversionEnd + " hours "}
+            </>
             {hasOverrides && (
               <span className="font-italic text-purple">(override)</span>
             )}
@@ -233,6 +230,7 @@ export default function SinglePage({
     getDatasourceById,
     getSegmentById,
     getExperimentMetricById,
+    getMetricById,
     projects,
     datasources,
     metrics,
@@ -342,63 +340,25 @@ export default function SinglePage({
     allExperimentMetrics.map((m) => m?.denominator).filter(Boolean) as string[]
   );
   const denominatorMetrics = denominatorMetricIds
-    .map((m) => getExperimentMetricById(m as string))
+    .map((m) => getMetricById(m as string))
     .filter(Boolean) as MetricInterface[];
 
-  const [
+  const {
     regressionAdjustmentAvailable,
     regressionAdjustmentEnabled,
-    metricRegressionAdjustmentStatuses,
     regressionAdjustmentHasValidMetrics,
-  ] = useMemo(() => {
-    const metricRegressionAdjustmentStatuses: MetricRegressionAdjustmentStatus[] = [];
-    let regressionAdjustmentAvailable = true;
-    let regressionAdjustmentEnabled = true;
-    let regressionAdjustmentHasValidMetrics = false;
-    for (const metric of allExperimentMetrics) {
-      if (!metric) continue;
-      const {
-        metricRegressionAdjustmentStatus,
-      } = getRegressionAdjustmentsForMetric({
-        metric: metric,
-        denominatorMetrics: denominatorMetrics,
-        experimentRegressionAdjustmentEnabled:
-          experiment.regressionAdjustmentEnabled ??
-          DEFAULT_REGRESSION_ADJUSTMENT_ENABLED,
-        organizationSettings: orgSettings,
-        metricOverrides: experiment.metricOverrides,
-      });
-      if (metricRegressionAdjustmentStatus.regressionAdjustmentEnabled) {
-        regressionAdjustmentEnabled = true;
-        regressionAdjustmentHasValidMetrics = true;
-      }
-      metricRegressionAdjustmentStatuses.push(metricRegressionAdjustmentStatus);
-    }
-    if (!experiment.regressionAdjustmentEnabled) {
-      regressionAdjustmentEnabled = false;
-    }
-    if (statsEngine === "bayesian") {
-      regressionAdjustmentAvailable = false;
-      regressionAdjustmentEnabled = false;
-    }
-    if (
-      !datasource?.type ||
-      datasource?.type === "google_analytics" ||
-      datasource?.type === "mixpanel"
-    ) {
-      // these do not implement getExperimentMetricQuery
-      regressionAdjustmentAvailable = false;
-      regressionAdjustmentEnabled = false;
-    }
-    if (!hasRegressionAdjustmentFeature) {
-      regressionAdjustmentEnabled = false;
-    }
-    return [
-      regressionAdjustmentAvailable,
-      regressionAdjustmentEnabled,
-      metricRegressionAdjustmentStatuses,
-      regressionAdjustmentHasValidMetrics,
-    ];
+  } = useMemo(() => {
+    return getAllMetricRegressionAdjustmentStatuses({
+      allExperimentMetrics,
+      denominatorMetrics,
+      orgSettings,
+      statsEngine,
+      experimentRegressionAdjustmentEnabled:
+        experiment.regressionAdjustmentEnabled,
+      experimentMetricOverrides: experiment.metricOverrides,
+      datasourceType: datasource?.type,
+      hasRegressionAdjustmentFeature,
+    });
   }, [
     allExperimentMetrics,
     denominatorMetrics,
@@ -473,9 +433,8 @@ export default function SinglePage({
                   : ""
               }`}
             >
-              <a>
-                <GBCircleArrowLeft /> Back to all experiments
-              </a>
+              <GBCircleArrowLeft />
+              Back to all experiments
             </Link>
           </div>
         </div>
@@ -747,9 +706,7 @@ export default function SinglePage({
               <div>Linked features</div>
               <div>
                 <Link href={`/features/${linkedFeatures[0].feature.id}`}>
-                  <a>
-                    <BsFlag /> {linkedFeatures[0].feature.id}
-                  </a>
+                  <BsFlag /> {linkedFeatures[0].feature.id}
                 </Link>
                 {linkedFeatures.length > 1
                   ? ` + ${linkedFeatures.length - 1} more`
@@ -946,20 +903,19 @@ export default function SinglePage({
                   </div>
                 </div>
                 <div>
-                  <Link href={`/idea/${idea.id}`}>
-                    <a
-                      style={{
-                        maxWidth: 200,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        display: "inline-block",
-                        whiteSpace: "nowrap",
-                        verticalAlign: "middle",
-                      }}
-                      title={idea.text}
-                    >
-                      <FaExternalLinkAlt /> {idea.text}
-                    </a>
+                  <Link
+                    href={`/idea/${idea.id}`}
+                    style={{
+                      maxWidth: 200,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      display: "inline-block",
+                      whiteSpace: "nowrap",
+                      verticalAlign: "middle",
+                    }}
+                    title={idea.text}
+                  >
+                    <FaExternalLinkAlt /> {idea.text}
                   </Link>
                 </div>
               </div>
@@ -1176,8 +1132,8 @@ export default function SinglePage({
                   and stats engine to automatically analyze your experiment
                   results.
                 </p>
-                <Link href="/datasources">
-                  <a className="btn btn-primary">Connect to your Data</a>
+                <Link href="/datasources" className="btn btn-primary">
+                  Connect to your Data
                 </Link>
               </>
             )}
@@ -1233,9 +1189,6 @@ export default function SinglePage({
                 regressionAdjustmentEnabled={regressionAdjustmentEnabled}
                 regressionAdjustmentHasValidMetrics={
                   regressionAdjustmentHasValidMetrics
-                }
-                metricRegressionAdjustmentStatuses={
-                  metricRegressionAdjustmentStatuses
                 }
                 onRegressionAdjustmentChange={onRegressionAdjustmentChange}
               />
@@ -1308,14 +1261,14 @@ export default function SinglePage({
                 )}
                 {datasource && (
                   <RightRailSectionGroup
-                    title="Attribution Model"
+                    title="Conversion Window Override"
                     type="custom"
                   >
                     <AttributionModelTooltip>
                       <strong>
                         {experiment.attributionModel === "experimentDuration"
-                          ? "Experiment Duration"
-                          : "First Exposure"}
+                          ? "Ignore Conversion Windows"
+                          : "Respect Conversion Windows"}
                       </strong>{" "}
                       <FaQuestionCircle />
                     </AttributionModelTooltip>
@@ -1405,9 +1358,8 @@ export default function SinglePage({
                   <div>
                     You don&apos;t have any metrics defined yet.{" "}
                     <Link href="/metrics">
-                      <a>
-                        Manage Metrics <FaExternalLinkAlt />
-                      </a>
+                      Manage Metrics
+                      <FaExternalLinkAlt />
                     </Link>
                   </div>
                 )}

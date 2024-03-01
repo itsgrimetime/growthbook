@@ -16,7 +16,7 @@ import {
 } from "@visx/tooltip";
 import { ExperimentInterfaceStringDates } from "back-end/types/experiment";
 import { ScaleLinear } from "d3-scale";
-import { getValidDate, date } from "shared/dates";
+import { date, getValidDate } from "shared/dates";
 import { getMetricFormatter } from "@/services/metrics";
 import { useCurrency } from "@/hooks/useCurrency";
 import styles from "./DateGraph.module.scss";
@@ -754,10 +754,11 @@ const DateGraph: FC<DateGraphProps> = ({
                   style={{ color: "#fff", fontSize: "12px", maxWidth: "250px" }}
                 >
                   <p className="mb-1">
-                    <Link href={`/experiment/${highlightExp.id}`}>
-                      <a style={{ color: "#b3e8ff", fontSize: "12px" }}>
-                        <strong>{highlightExp.name}</strong>
-                      </a>
+                    <Link
+                      href={`/experiment/${highlightExp.id}`}
+                      style={{ color: "#b3e8ff", fontSize: "12px" }}
+                    >
+                      <strong>{highlightExp.name}</strong>
                     </Link>
                   </p>
                   <p className="mb-1">

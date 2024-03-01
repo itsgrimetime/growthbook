@@ -1,7 +1,7 @@
 import type { Response } from "express";
 import { orgHasPremiumFeature } from "enterprise";
 import { AuthRequest } from "../../types/AuthRequest";
-import { getOrgFromReq } from "../../services/organizations";
+import { getContextFromReq } from "../../services/organizations";
 import {
   SDKConnectionInterface,
   CreateSDKConnectionParams,
@@ -24,8 +24,8 @@ export const getSDKConnections = async (
     connections: SDKConnectionInterface[];
   }>
 ) => {
-  const { org } = getOrgFromReq(req);
-  const connections = await findSDKConnectionsByOrganization(org.id);
+  const context = getContextFromReq(req);
+  const connections = await findSDKConnectionsByOrganization(context);
   res.status(200).json({
     status: 200,
     connections,
@@ -39,10 +39,10 @@ export const postSDKConnection = async (
     connection: SDKConnectionInterface;
   }>
 ) => {
-  const { org } = getOrgFromReq(req);
+  const { org } = getContextFromReq(req);
   const params = req.body;
 
-  req.checkPermissions("manageEnvironments", params.project, [
+  req.checkPermissions("manageEnvironments", params.projects, [
     params.environment,
   ]);
 
@@ -84,23 +84,23 @@ export const putSDKConnection = async (
   req: AuthRequest<EditSDKConnectionParams, { id: string }>,
   res: Response<{ status: 200 }>
 ) => {
-  const { org } = getOrgFromReq(req);
+  const context = getContextFromReq(req);
   const { id } = req.params;
-  const connection = await findSDKConnectionById(id);
+  const connection = await findSDKConnectionById(context, id);
 
-  if (!connection || connection.organization !== org.id) {
+  if (!connection) {
     throw new Error("Could not find SDK Connection");
   }
 
-  req.checkPermissions(
-    "manageEnvironments",
-    [connection.project, req.body.project || ""],
-    [connection.environment]
-  );
+  const projects = [...connection.projects, ...(req.body.projects || [])];
+
+  req.checkPermissions("manageEnvironments", projects, [
+    connection.environment,
+  ]);
 
   let encryptPayload = req.body.encryptPayload || false;
   const encryptionPermitted = orgHasPremiumFeature(
-    org,
+    context.org,
     "encrypt-features-endpoint"
   );
   const changingFromUnencryptedToEncrypted =
@@ -110,12 +110,12 @@ export const putSDKConnection = async (
   }
 
   let hashSecureAttributes = false;
-  if (orgHasPremiumFeature(org, "hash-secure-attributes")) {
+  if (orgHasPremiumFeature(context.org, "hash-secure-attributes")) {
     hashSecureAttributes = req.body.hashSecureAttributes || false;
   }
 
   let remoteEvalEnabled = false;
-  if (orgHasPremiumFeature(org, "remote-evaluation")) {
+  if (orgHasPremiumFeature(context.org, "remote-evaluation")) {
     remoteEvalEnabled = req.body.remoteEvalEnabled || false;
   }
 
@@ -124,7 +124,7 @@ export const putSDKConnection = async (
     hashSecureAttributes = false;
   }
 
-  await editSDKConnection(connection, {
+  await editSDKConnection(context, connection, {
     ...req.body,
     encryptPayload,
     hashSecureAttributes,
@@ -141,18 +141,18 @@ export const deleteSDKConnection = async (
   res: Response<{ status: 200 }>
 ) => {
   const { id } = req.params;
-  const { org } = getOrgFromReq(req);
-  const connection = await findSDKConnectionById(id);
+  const context = getContextFromReq(req);
+  const connection = await findSDKConnectionById(context, id);
 
-  if (!connection || connection.organization !== org.id) {
+  if (!connection) {
     throw new Error("Could not find SDK Connection");
   }
 
-  req.checkPermissions("manageEnvironments", connection.project, [
+  req.checkPermissions("manageEnvironments", connection.projects, [
     connection.environment,
   ]);
 
-  await deleteSDKConnectionById(org.id, id);
+  await deleteSDKConnectionById(context.org.id, id);
 
   res.status(200).json({
     status: 200,
@@ -167,10 +167,10 @@ export const checkSDKConnectionProxyStatus = async (
   }>
 ) => {
   const { id } = req.params;
-  const { org } = getOrgFromReq(req);
-  const connection = await findSDKConnectionById(id);
+  const context = getContextFromReq(req);
+  const connection = await findSDKConnectionById(context, id);
 
-  if (!connection || connection.organization !== org.id) {
+  if (!connection) {
     throw new Error("Could not find SDK Connection");
   }
 

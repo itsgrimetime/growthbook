@@ -1,9 +1,9 @@
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { ExperimentSnapshotAnalysisSettings } from "back-end/types/experiment-snapshot";
 import { DifferenceType } from "back-end/types/stats";
 import { getExposureQuery } from "@/services/datasources";
 import { useDefinitions } from "@/services/DefinitionsContext";
-import SelectField from "../Forms/SelectField";
+import SelectField from "@/components/Forms/SelectField";
 
 export interface Props {
   value: string;
@@ -123,6 +123,9 @@ export default function DimensionChooser({
             options: filteredDimensions,
           },
         ]}
+        formatGroupLabel={({ label }) => (
+          <div className="pt-2 pb-1 border-bottom">{label}</div>
+        )}
         initialOption="None"
         value={value}
         onChange={(v) => {

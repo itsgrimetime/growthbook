@@ -7,8 +7,8 @@ import track from "@/services/track";
 import { useAuth } from "@/services/auth";
 import { allowSelfOrgCreation, isMultiOrg } from "@/services/env";
 import useApi from "@/hooks/useApi";
-import Field from "../Forms/Field";
-import LoadingOverlay from "../LoadingOverlay";
+import Field from "@/components/Forms/Field";
+import LoadingOverlay from "@/components/LoadingOverlay";
 import WelcomeFrame from "./WelcomeFrame";
 
 import style from "./CreateOrganization.module.scss";
@@ -40,7 +40,14 @@ export default function CreateOrganization(): ReactElement {
   const { apiCall, logout } = useAuth();
   const { updateUser } = useUser();
 
-  const { data: recommendedOrgData } = useApi(`/user/getRecommendedOrg`);
+  const { data: recommendedOrgData } = useApi<{
+    organization: {
+      id: string;
+      name: string;
+      members: number;
+      currentUserIsPending: boolean;
+    };
+  }>(`/user/getRecommendedOrg`);
   const org = recommendedOrgData?.organization;
 
   useEffect(() => {

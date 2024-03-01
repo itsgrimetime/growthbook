@@ -1,14 +1,15 @@
 import clsx from "clsx";
+import { ExperimentMetricInterface, isFactMetric } from "shared/experiments";
+import React from "react";
 import {
-  ExperimentMetricInterface,
-  isFactMetric,
-  getConversionWindowHours,
-} from "shared/experiments";
-import { isNullUndefinedOrEmpty } from "@/services/utils";
+  capitalizeFirstLetter,
+  isNullUndefinedOrEmpty,
+} from "@/services/utils";
 import { ExperimentTableRow } from "@/services/experiments";
-import Markdown from "../Markdown/Markdown";
-import SortedTags from "../Tags/SortedTags";
+import Markdown from "@/components/Markdown/Markdown";
+import SortedTags from "@/components/Tags/SortedTags";
 import styles from "./MetricToolTipBody.module.scss";
+import MetricName from "./MetricName";
 
 interface MetricToolTipCompProps {
   metric: ExperimentMetricInterface;
@@ -35,9 +36,8 @@ const MetricTooltipBody = ({
     const regExp = new RegExp(/[A-Za-z0-9]/);
     return regExp.test(description);
   }
-  const metricOverrideFields = row?.metricOverrideFields ?? [];
 
-  const conversionWindowHours = getConversionWindowHours(metric);
+  const metricOverrideFields = row?.metricOverrideFields ?? [];
 
   const metricInfo: MetricInfo[] = [
     {
@@ -58,31 +58,41 @@ const MetricTooltipBody = ({
     },
     {
       show:
-        !isNullUndefinedOrEmpty(metric.capping) && (metric.capValue ?? 0) !== 0,
-      label: `Capping (${metric.capping})`,
-      body: metric.capValue ?? 0,
+        !isNullUndefinedOrEmpty(metric.cappingSettings.type) &&
+        (metric.cappingSettings.value ?? 0) !== 0,
+      label: `Capping (${metric.cappingSettings.type})`,
+      body: metric.cappingSettings.value ?? 0,
     },
     {
       show:
-        !isNullUndefinedOrEmpty(metric.conversionDelayHours) &&
-        metric.conversionDelayHours !== 0,
-      label: "Conversion Delay Hours",
+        (!isNullUndefinedOrEmpty(metric.windowSettings.type) ||
+          metricOverrideFields.includes("windowType")) &&
+        (metric.windowSettings.windowValue !== 0 ||
+          metricOverrideFields.includes("windowHours")),
+      label: `${capitalizeFirstLetter(
+        metric.windowSettings.type || "no"
+      )} Window`,
       body: (
         <>
-          {metric.conversionDelayHours}
-          {metricOverrideFields.includes("conversionDelayHours") ? (
+          {metric.windowSettings.type
+            ? `${metric.windowSettings.windowValue} ${metric.windowSettings.windowUnit}`
+            : ""}
+          {metricOverrideFields.includes("windowType") ||
+          metricOverrideFields.includes("windowHours") ? (
             <small className="text-purple ml-1">(override)</small>
           ) : null}
         </>
       ),
     },
     {
-      show: !isNullUndefinedOrEmpty(conversionWindowHours),
-      label: "Conversion Window Hours",
+      show:
+        (metric.windowSettings.delayHours ?? 0) !== 0 ||
+        metricOverrideFields.includes("delayHours"),
+      label: "Metric Delay Hours",
       body: (
         <>
-          {conversionWindowHours}
-          {metricOverrideFields.includes("conversionWindowHours") ? (
+          {metric.windowSettings.delayHours}
+          {metricOverrideFields.includes("delayHours") ? (
             <small className="text-purple ml-1">(override)</small>
           ) : null}
         </>
@@ -131,7 +141,9 @@ const MetricTooltipBody = ({
   if (newUi) {
     return (
       <div>
-        <h3>{metric.name}</h3>
+        <h4>
+          <MetricName id={metric.id} showOfficialLabel disableTooltip />
+        </h4>
         <table className="table table-sm table-bordered text-left mb-0">
           <tbody>
             {metricInfo

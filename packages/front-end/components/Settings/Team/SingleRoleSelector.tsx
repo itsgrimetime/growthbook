@@ -1,13 +1,13 @@
 import { ReactNode, useMemo } from "react";
 import { MemberRole, MemberRoleInfo } from "back-end/types/organization";
 import uniqid from "uniqid";
-import { roleSupportsEnvLimit } from "@/services/auth";
-import { useUser } from "../../../services/UserContext";
-import { useEnvironments } from "../../../services/features";
-import MultiSelectField from "../../Forms/MultiSelectField";
-import Toggle from "../../Forms/Toggle";
-import SelectField from "../../Forms/SelectField";
-import PremiumTooltip from "../../Marketing/PremiumTooltip";
+import { roleSupportsEnvLimit } from "shared/permissions";
+import { useUser } from "@/services/UserContext";
+import { useEnvironments } from "@/services/features";
+import MultiSelectField from "@/components/Forms/MultiSelectField";
+import Toggle from "@/components/Forms/Toggle";
+import SelectField from "@/components/Forms/SelectField";
+import PremiumTooltip from "@/components/Marketing/PremiumTooltip";
 
 export default function SingleRoleSelector({
   value,
@@ -25,6 +25,14 @@ export default function SingleRoleSelector({
   const { roles, hasCommercialFeature } = useUser();
   const hasFeature = hasCommercialFeature("advanced-permissions");
 
+  const isNoAccessRoleEnabled = hasCommercialFeature("no-access-role");
+
+  let roleOptions = [...roles];
+
+  if (!isNoAccessRoleEnabled) {
+    roleOptions = roles.filter((r) => r.id !== "noaccess");
+  }
+
   const availableEnvs = useEnvironments();
 
   const id = useMemo(() => uniqid(), []);
@@ -40,7 +48,7 @@ export default function SingleRoleSelector({
             role,
           });
         }}
-        options={roles
+        options={roleOptions
           .filter((r) => includeAdminRole || r.id !== "admin")
           .map((r) => ({
             label: r.id,

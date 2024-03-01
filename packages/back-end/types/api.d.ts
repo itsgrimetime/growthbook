@@ -1,9 +1,12 @@
-import { FeatureRule as FeatureDefinitionRule } from "@growthbook/growthbook";
+import {
+  AutoExperiment,
+  FeatureRule as FeatureDefinitionRule,
+} from "@growthbook/growthbook";
 import { EventAuditUser } from "../src/events/event-types";
 import { PermissionFunctions } from "../src/types/AuthRequest";
 import { AuditInterface } from "./audit";
 import { ExperimentStatus } from "./experiment";
-import { OrganizationInterface } from "./organization";
+import { OrganizationInterface, ReqContext } from "./organization";
 import { UserInterface } from "./user";
 
 export interface ExperimentOverride {
@@ -21,6 +24,14 @@ export interface FeatureDefinition {
   rules?: FeatureDefinitionRule[];
 }
 
+export type FeatureDefinitionWithProject = FeatureDefinition & {
+  project?: string;
+};
+
+export type AutoExperimentWithProject = AutoExperiment & {
+  project?: string;
+};
+
 export interface ExperimentOverridesResponse {
   status: 200;
   overrides: Record<string, ExperimentOverride>;
@@ -32,12 +43,23 @@ export interface ErrorResponse {
   error: string;
 }
 
+// req.user is not always guaranteed within API requests
+export type ApiReqContext = Omit<
+  ReqContext,
+  "userName" | "userId" | "email"
+> & {
+  userId?: string;
+  email?: string;
+  userName?: string;
+};
+
 export type ApiRequestLocals = PermissionFunctions & {
   apiKey: string;
   user?: UserInterface;
   organization: OrganizationInterface;
   eventAudit: EventAuditUser;
   audit: (data: Partial<AuditInterface>) => Promise<void>;
+  context: ApiReqContext;
 };
 
 export interface ApiErrorResponse {

@@ -15,10 +15,12 @@ import {
 } from "back-end/types/experimentLaunchChecklist";
 import track from "@/services/track";
 import { useAuth } from "@/services/auth";
+import { useCelebration } from "@/hooks/useCelebration";
 import useApi from "@/hooks/useApi";
-import Button from "../Button";
-import Tooltip from "../Tooltip/Tooltip";
-import ConfirmButton from "../Modal/ConfirmButton";
+import Button from "@/components/Button";
+import Tooltip from "@/components/Tooltip/Tooltip";
+import ConfirmButton from "@/components/Modal/ConfirmButton";
+import InitialSDKConnectionForm from "@/components/Features/SDKConnections/InitialSDKConnectionForm";
 
 type ManualChecklist = {
   key: string;
@@ -75,6 +77,9 @@ export function StartExperimentBanner({
   );
   const [updatingChecklist, setUpdatingChecklist] = useState(false);
   const manualChecklist: ManualChecklist[] = [];
+  const startCelebration = useCelebration();
+
+  const [showSdkForm, setShowSdkForm] = useState(false);
 
   manualChecklist.push({
     key: "sdk-connection",
@@ -180,9 +185,8 @@ export function StartExperimentBanner({
   // SDK Connection set up
   const projectConnections = connections.filter(
     (connection) =>
-      !experiment.project ||
-      !connection.project ||
-      experiment.project === connection.project
+      !connection.projects.length ||
+      connection.projects.includes(experiment.project || "")
   );
   const matchingConnections = projectConnections.filter(
     (connection) =>
@@ -193,16 +197,22 @@ export function StartExperimentBanner({
   );
   checklist.push({
     display: "Integrate the GrowthBook SDK into your app.",
-    action: (
-      <Link href="/sdks">
-        <a>
-          {connections.length > 0
-            ? "Manage SDK Connections"
-            : "Create an SDK Connection"}{" "}
-          <FaExternalLinkAlt />
+    action:
+      connections.length > 0 ? (
+        <Link href="/sdks">
+          Manage SDK Connections <FaExternalLinkAlt />
+        </Link>
+      ) : (
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            setShowSdkForm(true);
+          }}
+        >
+          Add SDK Connection
         </a>
-      </Link>
-    ),
+      ),
     status: verifiedConnections.length > 0 ? "success" : "error",
     tooltip:
       verifiedConnections.length > 0
@@ -262,6 +272,7 @@ export function StartExperimentBanner({
   }
 
   async function startExperiment() {
+    startCelebration();
     if (!experiment.phases?.length) {
       if (newPhase) {
         newPhase();
@@ -338,6 +349,16 @@ export function StartExperimentBanner({
 
   return (
     <div className={className ?? `appbox p-4 my-4`}>
+      {showSdkForm && (
+        <InitialSDKConnectionForm
+          close={() => setShowSdkForm(false)}
+          includeCheck={true}
+          cta="Continue"
+          goToNextStep={() => {
+            setShowSdkForm(false);
+          }}
+        />
+      )}
       <div className="row">
         <div className="col-auto text-left">
           <h3 className="text-purple">Pre-launch Check List</h3>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import {
+  Environment,
   NamespaceUsage,
   SDKAttributeFormat,
   SDKAttributeSchema,
@@ -19,13 +20,18 @@ import stringify from "json-stringify-pretty-compact";
 import { ExperimentInterfaceStringDates } from "back-end/types/experiment";
 import { FeatureUsageRecords } from "back-end/types/realtime";
 import cloneDeep from "lodash/cloneDeep";
-import { generateVariationId, validateFeatureValue } from "shared/util";
+import {
+  generateVariationId,
+  validateAndFixCondition,
+  validateFeatureValue,
+} from "shared/util";
 import { FeatureRevisionInterface } from "back-end/types/feature-revision";
 import isEqual from "lodash/isEqual";
 import { getUpcomingScheduleRule } from "@/services/scheduleRules";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
-import useOrgSettings from "../hooks/useOrgSettings";
-import useApi from "../hooks/useApi";
+import { validateSavedGroupTargeting } from "@/components/Features/SavedGroupTargetingField";
+import useOrgSettings from "@/hooks/useOrgSettings";
+import useApi from "@/hooks/useApi";
 import { useDefinitions } from "./DefinitionsContext";
 
 export { generateVariationId } from "shared/util";
@@ -89,6 +95,9 @@ export function getRules(feature: FeatureInterface, environment: string) {
 }
 export function getFeatureDefaultValue(feature: FeatureInterface) {
   return feature.defaultValue ?? "";
+}
+export function getPrerequisites(feature: FeatureInterface) {
+  return feature.prerequisites ?? [];
 }
 
 export function roundVariationWeight(num: number): number {
@@ -202,14 +211,22 @@ export function validateFeatureRule(
 ): null | FeatureRule {
   let hasChanges = false;
   const ruleCopy = cloneDeep(rule);
+
+  validateSavedGroupTargeting(rule.savedGroups);
+
   if (rule.condition) {
-    try {
-      const res = JSON.parse(rule.condition);
-      if (!res || typeof res !== "object") {
-        throw new Error("Condition is invalid");
-      }
-    } catch (e) {
-      throw new Error("Condition is invalid: " + e.message);
+    validateAndFixCondition(
+      rule.condition,
+      (condition) => {
+        hasChanges = true;
+        ruleCopy.condition = condition;
+      },
+      false
+    );
+  }
+  if (rule.prerequisites) {
+    if (rule.prerequisites.some((p) => !p.id)) {
+      throw new Error("Cannot have empty prerequisites");
     }
   }
   if (rule.type === "force") {
@@ -281,8 +298,12 @@ export function validateFeatureRule(
   return hasChanges ? ruleCopy : null;
 }
 
-export function getEnabledEnvironments(feature: FeatureInterface) {
+export function getEnabledEnvironments(
+  feature: FeatureInterface,
+  environments: Environment[]
+) {
   return Object.keys(feature.environmentSettings ?? {}).filter((env) => {
+    if (!environments.some((e) => e.id === env)) return false;
     return !!feature.environmentSettings?.[env]?.enabled;
   });
 }
@@ -315,9 +336,10 @@ export function getDefaultValue(valueType: FeatureValueType): string {
 
 export function getAffectedRevisionEnvs(
   liveFeature: FeatureInterface,
-  revision: FeatureRevisionInterface
+  revision: FeatureRevisionInterface,
+  environments: Environment[]
 ): string[] {
-  const enabledEnvs = getEnabledEnvironments(liveFeature);
+  const enabledEnvs = getEnabledEnvironments(liveFeature, environments);
   if (revision.defaultValue !== liveFeature.defaultValue) return enabledEnvs;
 
   return enabledEnvs.filter((env) => {
@@ -519,6 +541,10 @@ export function isRuleFullyCovered(rule: FeatureRule): boolean {
     upcomingScheduleRule?.enabled ||
     !rule.enabled;
 
+  if (rule?.prerequisites?.length) {
+    return false;
+  }
+
   // rollouts and experiments at 100%:
   if (
     (rule.type === "rollout" || rule.type === "experiment") &&
@@ -586,6 +612,10 @@ export function jsonToConds(
         const v = value[operator];
 
         if (operator === "$in" || operator === "$nin") {
+          if (v.some((str) => typeof str === "string" && str.includes(","))) {
+            valid = false;
+            return;
+          }
           return conds.push({
             field,
             operator,

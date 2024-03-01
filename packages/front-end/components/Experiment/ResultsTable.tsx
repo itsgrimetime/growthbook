@@ -56,7 +56,7 @@ import { QueryStatusData } from "@/components/Queries/RunQueriesButton";
 import { useDefinitions } from "@/services/DefinitionsContext";
 import ResultsMetricFilter from "@/components/Experiment/ResultsMetricFilter";
 import { ResultsMetricFilters } from "@/components/Experiment/Results";
-import Tooltip from "../Tooltip/Tooltip";
+import Tooltip from "@/components/Tooltip/Tooltip";
 import AlignedGraph from "./AlignedGraph";
 import ChanceToWinColumn from "./ChanceToWinColumn";
 import MetricValueColumn from "./MetricValueColumn";
@@ -176,12 +176,20 @@ export default function ResultsTable({
   useEffect(onResize, [isTabActive]);
 
   const orderedVariations: ExperimentReportVariationWithIndex[] = useMemo(() => {
-    return variations
+    const sorted = variations
       .map<ExperimentReportVariationWithIndex>((v, i) => ({ ...v, index: i }))
       .sort((a, b) => {
         if (a.index === baselineRow) return -1;
         return a.index - b.index;
       });
+    // fix browser .sort() quirks. manually move the control row to top:
+    const baselineIndex = sorted.findIndex((v) => v.index === baselineRow);
+    if (baselineIndex > -1) {
+      const baseline = sorted[baselineIndex];
+      sorted.splice(baselineIndex, 1);
+      sorted.unshift(baseline);
+    }
+    return sorted;
   }, [variations, baselineRow]);
 
   const filteredVariations = orderedVariations.filter(

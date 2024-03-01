@@ -1,6 +1,6 @@
 import { FeatureValueType } from "back-end/types/feature";
 import { SDKLanguage } from "back-end/types/sdk-connection";
-import Code from "../Code";
+import Code from "@/components/SyntaxHighlighting/Code";
 
 function rubySymbol(name: string): string {
   return name.match(/[^a-zA-Z0-9_]+/) ? `'${name}'` : `:${name}`;
@@ -35,6 +35,22 @@ export default function MultivariateFeatureCodeSnippet({
   featureId?: string;
   valueType?: FeatureValueType;
 }) {
+  if (language.match(/^nocode/)) {
+    return (
+      <Code
+        language="html"
+        code={`
+<script>
+const value = window._growthbook?.getFeatureValue(
+  ${JSON.stringify(featureId)},
+  ${getDefaultValue(valueType)}
+);
+console.log(value);
+</script>
+`.trim()}
+      />
+    );
+  }
   if (language === "javascript") {
     return (
       <Code

@@ -104,7 +104,7 @@ At the top is a dropdown where you can select which variation you are currently 
 Below that is your toolbar. It has the following tools in order from left to right:
 
 1. **Interactive Mode** - Click around your site normally
-2. **Element Selector** - Point and click to select an element on your site to edit. This is the most common way to make changes.
+2. **Selection Mode** - Point and click to select an element on your site to edit. This is the most common way to make changes.
 3. **Global CSS** - Inject global CSS styles into the page. Use this to control things like page background color or font size.
 4. **Custom JavaScript** - Inject Javascript into the page. Use this to create complex variations.
 5. **Change List** - See a summary of all of the changes you've made to the page so far
@@ -112,6 +112,54 @@ Below that is your toolbar. It has the following tools in order from left to rig
 When you're using the Element Selector, after you pick an element to edit, you'll be able to modify the Inner HTML (i.e. the copy), any attributes (e.g. a link HREF), and the list of CSS classes.
 
 When you're finished making changes, click the **Done Editing** button to be taken back to GrowthBook.
+
+### Custom JavaScript
+
+Custom JavaScript is executed as quickly as possible, often times before the page has fully loaded. This gives you the most flexibility in how to implement your experiment.
+
+If you are making changes to elements on the page, make sure you wait until they exist. Below is a small helper function you can add to the top of your Custom JavaScript to help with this:
+
+```js
+function waitFor(selector) {
+  return new Promise(resolve => {
+    const el = document.querySelector(selector);
+    if (el) return resolve(el);
+    const observer = new MutationObserver(() => {
+        const el = document.querySelector(selector);
+        if (el) { observer.disconnect(); resolve(el)}
+    });
+    observer.observe(document, {childList: true, subtree: true});
+  });
+}
+```
+
+Then, you can use it like so:
+
+```js
+waitFor(".my-element").then((el) => {
+  el.innerHTML = "Hello World!";
+});
+```
+
+### Drag and Drop
+
+When in Selection Mode, you can select an element and click to **drag and drop** it positionally on the page.
+
+#### Drag and Drop Handle
+
+When an element is selected, you will see a floating handle to move it positionally. Alternatively, you can click anywhere on the selected element to move it as well.
+
+![Visual Editor Drag and Drop Handle](/images/visual-editor-move-handle.png)
+
+Once dragging, the cursor will highlight an edge where the dragged element will land. When you release the cursor the element will move to the indicated spot. If you want to undo the move, click the 'Undo' button that is available for elements that have been dragged.
+
+![Visual Editor Drag and Drop Example](/images/visual-editor-drag-and-drop.gif)
+
+### Debug Panel
+
+The Visual Editor now comes with a Debug Panel to help diagnose any issues with your SDK configuration and URL Targeting rules. Use this to help diagnose your own errors, or provide a screenshot to our Support team when reaching out to help provide context.
+
+<img style={{ width: '400px'}} src="/images/visual-editor-debug-panel.png" alt="Debug Panel"/>
 
 ## Deploying to Production
 
@@ -209,20 +257,6 @@ And lastly, you can access the GrowthBook SDK instance at `window._growthbook` i
 ### Content Security Policy (CSP) Changes
 
 If your website uses a Content Security Policy (CSP), there are some additional changes you'll need to make. This applies to both SDK and pre-build script tag integration.
-
-#### connect-src
-
-If you have the `connect-src` directive defined in your website's CSP, you'll need to include the URL of your GrowthBook API Host in order for your website to load experiments from GrowthBook's servers.
-
-```
-Content-Security-Policy: connect-src <GROWTHBOOK_API_HOST>;
-```
-
-If you use GrowthBook Cloud, use our global CDN: https://cdn.growthbook.io
-
-```
-Content-Security-Policy: connect-src https://cdn.growthbook.io;
-```
 
 #### script-src
 

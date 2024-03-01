@@ -5,10 +5,7 @@ import {
 } from "back-end/types/experiment-snapshot";
 import clsx from "clsx";
 import React, { useState } from "react";
-import {
-  ExperimentReportVariation,
-  MetricRegressionAdjustmentStatus,
-} from "back-end/types/report";
+import { ExperimentReportVariation } from "back-end/types/report";
 import { DifferenceType, StatsEngine } from "back-end/types/stats";
 import {
   FaExclamationCircle,
@@ -35,9 +32,11 @@ import Tooltip from "@/components/Tooltip/Tooltip";
 import { trackSnapshot } from "@/services/track";
 import VariationChooser from "@/components/Experiment/VariationChooser";
 import BaselineChooser from "@/components/Experiment/BaselineChooser";
-import RunQueriesButton, { getQueryStatus } from "../Queries/RunQueriesButton";
-import ViewAsyncQueriesButton from "../Queries/ViewAsyncQueriesButton";
-import DimensionChooser from "../Dimensions/DimensionChooser";
+import RunQueriesButton, {
+  getQueryStatus,
+} from "@/components/Queries/RunQueriesButton";
+import ViewAsyncQueriesButton from "@/components/Queries/ViewAsyncQueriesButton";
+import DimensionChooser from "@/components/Dimensions/DimensionChooser";
 import AnalysisForm from "./AnalysisForm";
 import RefreshSnapshotButton from "./RefreshSnapshotButton";
 import ResultMoreMenu from "./ResultMoreMenu";
@@ -56,7 +55,6 @@ export default function AnalysisSettingsBar({
   regressionAdjustmentAvailable,
   regressionAdjustmentEnabled,
   regressionAdjustmentHasValidMetrics,
-  metricRegressionAdjustmentStatuses,
   onRegressionAdjustmentChange,
   newUi = false,
   showMoreMenu = true,
@@ -79,7 +77,6 @@ export default function AnalysisSettingsBar({
   regressionAdjustmentAvailable?: boolean;
   regressionAdjustmentEnabled?: boolean;
   regressionAdjustmentHasValidMetrics?: boolean;
-  metricRegressionAdjustmentStatuses?: MetricRegressionAdjustmentStatus[];
   onRegressionAdjustmentChange?: (enabled: boolean) => void;
   newUi?: boolean;
   showMoreMenu?: boolean;
@@ -134,6 +131,8 @@ export default function AnalysisSettingsBar({
   const hasData = (analysis?.results?.[0]?.variations?.length ?? 0) > 0;
   const [refreshError, setRefreshError] = useState("");
 
+  const manualSnapshot = !datasource;
+
   return (
     <div>
       {modalOpen && experiment && (
@@ -161,16 +160,6 @@ export default function AnalysisSettingsBar({
           {newUi && setVariationFilter && setBaselineRow ? (
             <>
               <div className="col-auto form-inline pr-5">
-                <VariationChooser
-                  variations={experiment.variations}
-                  variationFilter={variationFilter ?? []}
-                  setVariationFilter={setVariationFilter}
-                  baselineRow={baselineRow ?? 0}
-                  dropdownEnabled={snapshot?.dimension !== "pre:date"}
-                />
-                <em className="text-muted mx-3" style={{ marginTop: 15 }}>
-                  vs
-                </em>
                 <BaselineChooser
                   variations={experiment.variations}
                   setVariationFilter={setVariationFilter}
@@ -181,8 +170,20 @@ export default function AnalysisSettingsBar({
                   setAnalysisSettings={setAnalysisSettings}
                   loading={!!loading}
                   mutate={mutate}
-                  dropdownEnabled={snapshot?.dimension !== "pre:date"}
+                  dropdownEnabled={
+                    !manualSnapshot && snapshot?.dimension !== "pre:date"
+                  }
                   dimension={dimension}
+                />
+                <em className="text-muted mx-3" style={{ marginTop: 15 }}>
+                  vs
+                </em>
+                <VariationChooser
+                  variations={experiment.variations}
+                  variationFilter={variationFilter ?? []}
+                  setVariationFilter={setVariationFilter}
+                  baselineRow={baselineRow ?? 0}
+                  dropdownEnabled={snapshot?.dimension !== "pre:date"}
                 />
               </div>
             </>
@@ -203,7 +204,7 @@ export default function AnalysisSettingsBar({
               setAnalysisSettings={setAnalysisSettings}
             />
           </div>
-          {newUi && setDifferenceType ? (
+          {newUi && !manualSnapshot && setDifferenceType ? (
             <div className="col-auto form-inline pr-5">
               <DifferenceTypeChooser
                 differenceType={differenceType ?? "relative"}
@@ -372,9 +373,6 @@ export default function AnalysisSettingsBar({
                           body: JSON.stringify({
                             phase,
                             dimension,
-                            statsEngine,
-                            regressionAdjustmentEnabled,
-                            metricRegressionAdjustmentStatuses,
                           }),
                         }
                       )
@@ -419,11 +417,7 @@ export default function AnalysisSettingsBar({
                     experiment={experiment}
                     lastAnalysis={analysis}
                     dimension={dimension}
-                    statsEngine={statsEngine}
-                    regressionAdjustmentEnabled={regressionAdjustmentEnabled}
-                    metricRegressionAdjustmentStatuses={
-                      metricRegressionAdjustmentStatuses
-                    }
+                    setAnalysisSettings={setAnalysisSettings}
                     onSubmit={() => {
                       if (baselineRow !== 0) {
                         setBaselineRow?.(0);
@@ -447,9 +441,6 @@ export default function AnalysisSettingsBar({
                       body: JSON.stringify({
                         phase,
                         dimension,
-                        statsEngine,
-                        regressionAdjustmentEnabled,
-                        metricRegressionAdjustmentStatuses,
                       }),
                     }
                   )

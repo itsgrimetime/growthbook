@@ -14,10 +14,10 @@ export const getSdkPayload = createApiRequestHandler()(
     }
 
     const {
-      organization,
+      capabilities,
       environment,
       encrypted,
-      project,
+      projects,
       encryptionKey,
       includeVisualExperiments,
       includeDraftExperiments,
@@ -26,9 +26,10 @@ export const getSdkPayload = createApiRequestHandler()(
     } = await getPayloadParamsFromApiKey(key, req);
 
     const defs = await getFeatureDefinitions({
-      organization,
+      context: req.context,
+      capabilities,
       environment,
-      project,
+      projects,
       encryptionKey: encrypted ? encryptionKey : "",
       includeVisualExperiments,
       includeDraftExperiments,

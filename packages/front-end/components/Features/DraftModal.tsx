@@ -3,13 +3,13 @@ import ReactDiffViewer, { DiffMethod } from "react-diff-viewer";
 import { useState, useMemo } from "react";
 import { FaAngleDown, FaAngleRight } from "react-icons/fa";
 import { FeatureRevisionInterface } from "back-end/types/feature-revision";
-import { autoMerge } from "shared/util";
+import { autoMerge, mergeResultHasChanges } from "shared/util";
 import { getAffectedRevisionEnvs, useEnvironments } from "@/services/features";
 import { useAuth } from "@/services/auth";
 import usePermissions from "@/hooks/usePermissions";
-import Modal from "../Modal";
-import Button from "../Button";
-import Field from "../Forms/Field";
+import Modal from "@/components/Modal";
+import Button from "@/components/Button";
+import Field from "@/components/Forms/Field";
 
 export interface Props {
   feature: FeatureInterface;
@@ -84,7 +84,13 @@ export default function DraftModal({
 
   const mergeResult = useMemo(() => {
     if (!revision || !baseRevision || !liveRevision) return null;
-    return autoMerge(liveRevision, baseRevision, revision, {});
+    return autoMerge(
+      liveRevision,
+      baseRevision,
+      revision,
+      environments.map((e) => e.id),
+      {}
+    );
   }, [revision, baseRevision, liveRevision]);
 
   const [comment, setComment] = useState(revision?.comment || "");
@@ -125,13 +131,10 @@ export default function DraftModal({
   const hasPermission = permissions.check(
     "publishFeatures",
     feature.project,
-    getAffectedRevisionEnvs(feature, revision)
+    getAffectedRevisionEnvs(feature, revision, environments)
   );
 
-  const hasChanges =
-    !mergeResult.success ||
-    Object.keys(mergeResult.result.rules || {}).length > 0 ||
-    !!mergeResult.result.defaultValue;
+  const hasChanges = mergeResultHasChanges(mergeResult);
 
   return (
     <Modal
@@ -217,7 +220,7 @@ export default function DraftModal({
               <ExpandableDiff {...diff} key={diff.title} />
             ))}
           </div>
-          {hasPermission && (
+          {hasPermission ? (
             <Field
               label="Add a Comment (optional)"
               textarea
@@ -227,6 +230,10 @@ export default function DraftModal({
                 setComment(e.target.value);
               }}
             />
+          ) : (
+            <div className="alert alert-info">
+              You do not have permission to publish this draft.
+            </div>
           )}
         </div>
       )}

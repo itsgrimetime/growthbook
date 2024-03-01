@@ -1,4 +1,4 @@
-import React, { FC, useState } from "react";
+import { FC, useState } from "react";
 import { useForm } from "react-hook-form";
 import {
   ExperimentInterfaceStringDates,
@@ -9,31 +9,22 @@ import { DEFAULT_REGRESSION_ADJUSTMENT_DAYS } from "shared/constants";
 import { OrganizationSettings } from "back-end/types/organization";
 import { ExperimentMetricInterface } from "shared/experiments";
 import useOrgSettings from "@/hooks/useOrgSettings";
-import { useAuth } from "../../services/auth";
-import Modal from "../Modal";
-import { useDefinitions } from "../../services/DefinitionsContext";
-import { useUser } from "../../services/UserContext";
-import PremiumTooltip from "../Marketing/PremiumTooltip";
-import UpgradeMessage from "../Marketing/UpgradeMessage";
-import UpgradeModal from "../Settings/UpgradeModal";
+import { useAuth } from "@/services/auth";
+import { useDefinitions } from "@/services/DefinitionsContext";
+import { useUser } from "@/services/UserContext";
+import Modal from "@/components/Modal";
+import PremiumTooltip from "@/components/Marketing/PremiumTooltip";
+import UpgradeMessage from "@/components/Marketing/UpgradeMessage";
+import UpgradeModal from "@/components/Settings/UpgradeModal";
 import MetricsOverridesSelector from "./MetricsOverridesSelector";
-import MetricsSelector from "./MetricsSelector";
+import MetricsSelector, { MetricsSelectorTooltip } from "./MetricsSelector";
 import MetricSelector from "./MetricSelector";
 
 export interface EditMetricsFormInterface {
   metrics: string[];
   guardrails: string[];
   activationMetric: string;
-  metricOverrides: {
-    id: string;
-    conversionWindowHours?: number;
-    conversionDelayHours?: number;
-    winRisk?: number;
-    loseRisk?: number;
-    regressionAdjustmentOverride?: boolean;
-    regressionAdjustmentEnabled?: boolean;
-    regressionAdjustmentDays?: number;
-  }[];
+  metricOverrides: MetricOverride[];
 }
 
 export function getDefaultMetricOverridesFormValue(
@@ -78,7 +69,8 @@ export function fixMetricOverridesBeforeSaving(overrides: MetricOverride[]) {
     for (const key in overrides[i]) {
       if (key === "id") continue;
       const v = overrides[i][key];
-      if (v === undefined || v === null || isNaN(v)) {
+      // remove nullish values from payload
+      if (v === undefined || v === null || (key !== "windowType" && isNaN(v))) {
         delete overrides[i][key];
         continue;
       }
@@ -148,7 +140,7 @@ const EditMetricsForm: FC<{
       ctaEnabled={!hasMetricOverrideRiskError}
       submit={form.handleSubmit(async (value) => {
         const payload = cloneDeep<EditMetricsFormInterface>(value);
-        fixMetricOverridesBeforeSaving(payload.metricOverrides);
+        fixMetricOverridesBeforeSaving(value.metricOverrides || []);
         await apiCall(`/experiment/${experiment.id}`, {
           method: "POST",
           body: JSON.stringify(payload),
@@ -159,13 +151,17 @@ const EditMetricsForm: FC<{
     >
       <div className="form-group">
         <label className="font-weight-bold mb-1">Goal Metrics</label>
-        <div className="mb-1 font-italic">
-          Metrics you are trying to improve with this experiment.
+        <div className="mb-1">
+          <span className="font-italic">
+            Metrics you are trying to improve with this experiment.{" "}
+          </span>
+          <MetricsSelectorTooltip />
         </div>
         <MetricsSelector
           selected={form.watch("metrics")}
           onChange={(metrics) => form.setValue("metrics", metrics)}
           datasource={experiment.datasource}
+          exposureQueryId={experiment.exposureQueryId}
           project={experiment.project}
           autoFocus={true}
           includeFacts={true}
@@ -174,14 +170,18 @@ const EditMetricsForm: FC<{
 
       <div className="form-group">
         <label className="font-weight-bold mb-1">Guardrail Metrics</label>
-        <div className="mb-1 font-italic">
-          Metrics you want to monitor, but are NOT specifically trying to
-          improve.
+        <div className="mb-1">
+          <span className="font-italic">
+            Metrics you want to monitor, but are NOT specifically trying to
+            improve.{" "}
+          </span>
+          <MetricsSelectorTooltip />
         </div>
         <MetricsSelector
           selected={form.watch("guardrails")}
           onChange={(metrics) => form.setValue("guardrails", metrics)}
           datasource={experiment.datasource}
+          exposureQueryId={experiment.exposureQueryId}
           project={experiment.project}
           includeFacts={true}
         />
@@ -189,13 +189,16 @@ const EditMetricsForm: FC<{
 
       <div className="form-group">
         <label className="font-weight-bold mb-1">Activation Metric</label>
-        <div className="mb-1 font-italic">
-          Users must convert on this metric before being included.
+        <div className="mb-1">
+          <span className="font-italic">
+            Users must convert on this metric before being included.{" "}
+          </span>
+          <MetricsSelectorTooltip onlyBinomial={true} />
         </div>
-
         <MetricSelector
           initialOption="None"
           value={form.watch("activationMetric")}
+          exposureQueryId={experiment.exposureQueryId}
           onChange={(metric) => form.setValue("activationMetric", metric)}
           datasource={experiment.datasource}
           project={experiment.project}

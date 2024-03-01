@@ -4,12 +4,13 @@ import { useAuth } from "@/services/auth";
 import { useSearch } from "@/services/search";
 import usePermissions from "@/hooks/usePermissions";
 import { useDefinitions } from "@/services/DefinitionsContext";
-import Field from "../Forms/Field";
-import Tooltip from "../Tooltip/Tooltip";
-import { GBAddCircle } from "../Icons";
-import MoreMenu from "../Dropdown/MoreMenu";
-import DeleteButton from "../DeleteButton/DeleteButton";
-import InlineCode from "../SyntaxHighlighting/InlineCode";
+import Field from "@/components/Forms/Field";
+import Tooltip from "@/components/Tooltip/Tooltip";
+import { GBAddCircle } from "@/components/Icons";
+import MoreMenu from "@/components/Dropdown/MoreMenu";
+import DeleteButton from "@/components/DeleteButton/DeleteButton";
+import InlineCode from "@/components/SyntaxHighlighting/InlineCode";
+import { OfficialBadge } from "@/components/Metrics/MetricName";
 import FactFilterModal from "./FactFilterModal";
 
 export interface Props {
@@ -97,14 +98,17 @@ export default function FactFilterList({ factTable }: Props) {
             <tbody>
               {items.map((filter) => (
                 <tr key={filter.id}>
-                  <td style={{ verticalAlign: "top" }}>{filter.name}</td>
+                  <td style={{ verticalAlign: "top" }}>
+                    {filter.name}
+                    <OfficialBadge type="filter" managedBy={filter.managedBy} />
+                  </td>
                   <td style={{ verticalAlign: "top" }}>
                     <div style={{ marginTop: 2 }}>
                       <InlineCode language="sql" code={filter.value} />
                     </div>
                   </td>
                   <td style={{ verticalAlign: "top" }}>
-                    {canEdit && (
+                    {canEdit && !filter.managedBy && (
                       <MoreMenu>
                         <button
                           className="dropdown-item"
