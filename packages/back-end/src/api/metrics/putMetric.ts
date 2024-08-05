@@ -1,4 +1,4 @@
-import { auditDetailsUpdate } from "@back-end/src/services/audit";
+import { auditDetailsUpdate } from "../../services/audit";
 import { createApiRequestHandler } from "../../util/handler";
 import { getMetricById, updateMetric } from "../../models/MetricModel";
 import { PutMetricResponse } from "../../../types/openapi";

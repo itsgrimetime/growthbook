@@ -1,4 +1,4 @@
-import { auditDetailsCreate } from "@back-end/src/services/audit";
+import { auditDetailsCreate } from "../../services/audit";
 import { PostMetricResponse } from "../../../types/openapi";
 import { createApiRequestHandler } from "../../util/handler";
 import { postMetricValidator } from "../../validators/openapi";
