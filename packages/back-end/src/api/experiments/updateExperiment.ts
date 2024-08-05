@@ -1,3 +1,4 @@
+import { auditDetailsUpdate } from "../../services/audit";
 import { UpdateExperimentResponse } from "../../../types/openapi";
 import { getDataSourceById } from "../../models/DataSourceModel";
 import {
@@ -70,6 +71,16 @@ export const updateExperiment = createApiRequestHandler(
     if (updatedExperiment === null) {
       throw new Error("Error happened during updating experiment.");
     }
+
+    await req.audit({
+      event: "experiment.update",
+      entity: {
+        object: "experiment",
+        id: experiment.id,
+      },
+      details: auditDetailsUpdate(experiment, updatedExperiment, {}),
+    });
+
     const apiExperiment = await toExperimentApiInterface(
       req.context,
       updatedExperiment
