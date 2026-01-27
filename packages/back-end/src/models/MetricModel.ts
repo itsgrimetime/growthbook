@@ -343,6 +343,100 @@ export async function getMetricsByOrganization(
   return findMetrics(context);
 }
 
+/**
+ * Get metrics with database-level pagination.
+ * Filters and pagination are applied at the MongoDB level for better performance.
+ */
+export async function getMetricsPaginated(
+  context: ReqContext | ApiReqContext,
+  options: {
+    filter?: Record<string, unknown>;
+    limit: number;
+    skip: number;
+  },
+): Promise<{ items: MetricInterface[]; total: number }> {
+  const metrics: MetricInterface[] = [];
+  const metricIds = new Set<string>();
+  let configMetricsCount = 0;
+
+  // Handle config file metrics first (they can't be paginated at DB level)
+  if (usingFileConfig()) {
+    const configMetrics = getConfigMetrics(context).filter((m) => {
+      // Apply filter to config metrics too
+      if (options.filter) {
+        if (
+          options.filter.datasource &&
+          m.datasource !== options.filter.datasource
+        ) {
+          return false;
+        }
+        // Handle project filtering
+        if (options.filter.$or) {
+          const projectId = (
+            options.filter.$or as Array<Record<string, unknown>>
+          ).find((c) => c.projects && typeof c.projects === "string")?.projects;
+          if (
+            projectId &&
+            m.projects?.length &&
+            !m.projects.includes(projectId as string)
+          ) {
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+
+    configMetrics.forEach((m) => {
+      metrics.push(m);
+      metricIds.add(m.id);
+    });
+    configMetricsCount = configMetrics.length;
+
+    // If metrics are locked down to just a config file, paginate in memory
+    if (!ALLOW_CREATE_METRICS) {
+      const sorted = metrics.sort((a, b) => a.id.localeCompare(b.id));
+      return {
+        items: sorted.slice(options.skip, options.skip + options.limit),
+        total: sorted.length,
+      };
+    }
+  }
+
+  const baseQuery = { organization: context.org.id, ...options.filter };
+
+  // Run count and paginated query in parallel
+  const [dbTotal, docs] = await Promise.all([
+    getCollection(COLLECTION).countDocuments(baseQuery),
+    getCollection(COLLECTION)
+      .find(baseQuery, { projection: { analysis: 0 } })
+      .sort({ id: 1 })
+      .skip(Math.max(0, options.skip - configMetricsCount))
+      .limit(options.limit)
+      .toArray(),
+  ]);
+
+  docs.forEach((doc) => {
+    if (!metricIds.has(doc.id)) {
+      metrics.push(toInterface(doc));
+    }
+  });
+
+  // Sort combined results and apply pagination for config file case
+  if (configMetricsCount > 0) {
+    const sorted = metrics.sort((a, b) => a.id.localeCompare(b.id));
+    return {
+      items: sorted.slice(options.skip, options.skip + options.limit),
+      total: configMetricsCount + dbTotal,
+    };
+  }
+
+  return {
+    items: metrics,
+    total: dbTotal,
+  };
+}
+
 export async function getMetricsByDatasource(
   context: ReqContext | ApiReqContext,
   datasource: string,

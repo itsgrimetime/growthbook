@@ -379,6 +379,22 @@ export abstract class BaseModel<
   public getAll(filter?: ScopedFilterQuery<T>) {
     return this._find(filter);
   }
+  /**
+   * Get all documents with true database-level pagination.
+   * Returns items and total count for building pagination response.
+   */
+  public getAllPaginated(
+    filter: ScopedFilterQuery<T> | undefined,
+    options: {
+      sort?: Partial<{
+        [key in keyof Omit<z.infer<T>, "organization">]: 1 | -1;
+      }>;
+      limit: number;
+      skip: number;
+    },
+  ) {
+    return this._findPaginated(filter || {}, options);
+  }
   public create(
     props: CreateProps<z.infer<T>>,
     writeOptions?: WriteOptions,
@@ -575,6 +591,109 @@ export abstract class BaseModel<
     if (!skip && !limit) return filtered;
 
     return filtered.slice(skip || 0, limit ? (skip || 0) + limit : undefined);
+  }
+
+  /**
+   * Find documents with true database-level pagination.
+   * Returns both the paginated items and total count for pagination metadata.
+   *
+   * Note: This bypasses permission filtering for performance. Only use when
+   * the caller has org-level read access (e.g., API requests).
+   */
+  protected async _findPaginated(
+    query: ScopedFilterQuery<T> = {},
+    {
+      sort,
+      limit,
+      skip,
+      projection,
+    }: {
+      sort?: Partial<{
+        [key in keyof Omit<z.infer<T>, "organization">]: 1 | -1;
+      }>;
+      limit: number;
+      skip: number;
+      projection?: Partial<Record<keyof z.infer<T>, 0 | 1>>;
+    },
+  ): Promise<{ items: z.infer<T>[]; total: number }> {
+    const fullQuery = {
+      ...this.getBaseQuery(),
+      ...query,
+      organization: this.context.org.id,
+    };
+
+    if (this.useConfigFile()) {
+      // For config file, fall back to in-memory pagination
+      const docs =
+        this.getConfigDocuments().filter((doc) =>
+          evalCondition(doc, fullQuery),
+        ) || [];
+
+      if (sort) {
+        docs.sort((a, b) => {
+          for (const key in sort) {
+            const typedKey = key as keyof z.infer<T>;
+            const sortDir = sort[typedKey] as 1 | -1;
+
+            if (a[typedKey] < b[typedKey]) return -1 * sortDir;
+            if (a[typedKey] > b[typedKey]) return 1 * sortDir;
+          }
+          return 0;
+        });
+      }
+
+      const total = docs.length;
+      const items = docs.slice(skip, skip + limit);
+
+      return { items, total };
+    }
+
+    // Run count and paginated query in parallel for better performance
+    const collection = this._dangerousGetCollection();
+    const [total, rawDocs] = await Promise.all([
+      collection.countDocuments(fullQuery),
+      (async () => {
+        const cursor = collection.find(fullQuery);
+        if (projection) {
+          cursor.project(projection);
+        }
+        if (sort) {
+          cursor.sort(sort as { [key: string]: 1 | -1 });
+        }
+        cursor.skip(skip);
+        cursor.limit(limit);
+        return cursor.toArray();
+      })(),
+    ]);
+
+    if (!rawDocs.length) return { items: [], total };
+
+    const items = rawDocs.map((d) =>
+      this.migrate(this._removeMongooseFields(d)),
+    );
+
+    return { items, total };
+  }
+
+  /**
+   * Count documents matching a query
+   */
+  protected async _count(query: ScopedFilterQuery<T> = {}): Promise<number> {
+    const fullQuery = {
+      ...this.getBaseQuery(),
+      ...query,
+      organization: this.context.org.id,
+    };
+
+    if (this.useConfigFile()) {
+      return (
+        this.getConfigDocuments().filter((doc) =>
+          evalCondition(doc, fullQuery),
+        ) || []
+      ).length;
+    }
+
+    return this._dangerousGetCollection().countDocuments(fullQuery);
   }
 
   protected async _findOne(query: ScopedFilterQuery<T>) {

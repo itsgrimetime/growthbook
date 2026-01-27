@@ -1,44 +1,49 @@
-import { isProjectListValidForProject } from "shared/util";
 import { ListFactMetricsResponse } from "shared/types/openapi";
 import { listFactMetricsValidator } from "shared/validators";
 import {
-  applyPagination,
+  buildPaginationFields,
   createApiRequestHandler,
+  getPaginationOptions,
 } from "back-end/src/util/handler";
 
 export const listFactMetrics = createApiRequestHandler(
   listFactMetricsValidator,
 )(async (req): Promise<ListFactMetricsResponse> => {
-  const factMetrics = await req.context.models.factMetrics.getAll();
+  // Build MongoDB filter for better performance
+  const filter: Record<string, unknown> = {};
 
-  let matches = factMetrics;
-  if (req.query.projectId) {
-    matches = matches.filter((factMetric) =>
-      isProjectListValidForProject(factMetric.projects, req.query.projectId),
-    );
-  }
   if (req.query.datasourceId) {
-    matches = matches.filter(
-      (factMetric) => factMetric.datasource === req.query.datasourceId,
-    );
+    filter.datasource = req.query.datasourceId;
   }
   if (req.query.factTableId) {
-    matches = matches.filter(
-      (factMetric) =>
-        factMetric.numerator?.factTableId === req.query.factTableId,
-    );
+    filter["numerator.factTableId"] = req.query.factTableId;
+  }
+  if (req.query.projectId) {
+    // Match if: projects array contains the projectId OR projects is empty/missing
+    // (empty projects means the metric is available to all projects)
+    filter.$or = [
+      { projects: req.query.projectId },
+      { projects: { $size: 0 } },
+      { projects: { $exists: false } },
+    ];
   }
 
-  // TODO: Move sorting/limiting to the database query for better performance
-  const { filtered, returnFields } = applyPagination(
-    matches.sort((a, b) => a.id.localeCompare(b.id)),
-    req.query,
+  const { limit, offset } = getPaginationOptions(req.query);
+
+  // Use database-level pagination for better performance
+  const { items, total } = await req.context.models.factMetrics.getAllPaginated(
+    filter,
+    {
+      sort: { id: 1 },
+      limit,
+      skip: offset,
+    },
   );
 
   return {
-    factMetrics: filtered.map((factMetric) =>
+    factMetrics: items.map((factMetric) =>
       req.context.models.factMetrics.toApiInterface(factMetric),
     ),
-    ...returnFields,
+    ...buildPaginationFields({ items, total, limit, offset }),
   };
 });

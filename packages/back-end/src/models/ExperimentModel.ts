@@ -368,6 +368,40 @@ async function findExperiments(
   );
 }
 
+/**
+ * Find experiments with database-level pagination.
+ * Returns both paginated items and total count for pagination metadata.
+ */
+async function findExperimentsPaginated(
+  context: ReqContext | ApiReqContext,
+  query: FilterQuery<ExperimentDocument>,
+  options: {
+    limit: number;
+    skip: number;
+    sortBy?: SortFilter;
+  },
+): Promise<{ items: ExperimentInterface[]; total: number }> {
+  const collection = getCollection(COLLECTION);
+
+  // Run count and paginated query in parallel
+  const [total, docs] = await Promise.all([
+    collection.countDocuments(query),
+    (async () => {
+      let cursor = collection.find(query);
+      if (options.sortBy) {
+        cursor = cursor.sort(options.sortBy);
+      }
+      cursor = cursor.skip(options.skip).limit(options.limit);
+      return cursor.toArray();
+    })(),
+  ]);
+
+  return {
+    items: docs.map(toInterface),
+    total,
+  };
+}
+
 export async function getExperimentById(
   context: ReqContext | ApiReqContext,
   id: string,
@@ -431,6 +465,36 @@ export async function getAllExperiments(
   }
 
   return await findExperiments(context, query);
+}
+
+/**
+ * Get experiments with database-level pagination.
+ * Filters, sorting, and pagination are applied at the MongoDB level for better performance.
+ */
+export async function getExperimentsPaginated(
+  context: ReqContext | ApiReqContext,
+  options: {
+    filter?: Record<string, unknown>;
+    limit: number;
+    skip: number;
+    includeArchived?: boolean;
+  },
+): Promise<{ items: ExperimentInterface[]; total: number }> {
+  const query: FilterQuery<ExperimentDocument> = {
+    organization: context.org.id,
+    type: { $ne: "holdout" }, // Exclude holdouts by default
+    ...options.filter,
+  };
+
+  if (!options.includeArchived) {
+    query.archived = { $ne: true };
+  }
+
+  return findExperimentsPaginated(context, query, {
+    limit: options.limit,
+    skip: options.skip,
+    sortBy: { dateCreated: 1 },
+  });
 }
 
 export async function hasArchivedExperiments(

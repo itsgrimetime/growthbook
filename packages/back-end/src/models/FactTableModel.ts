@@ -138,6 +138,35 @@ export async function getAllFactTablesForOrganization(
     .filter((f) => context.permissions.canReadMultiProjectResource(f.projects));
 }
 
+/**
+ * Get fact tables with database-level pagination.
+ * Filters and pagination are applied at the MongoDB level for better performance.
+ */
+export async function getFactTablesPaginated(
+  context: ReqContext | ApiReqContext,
+  options: {
+    filter?: Record<string, unknown>;
+    limit: number;
+    skip: number;
+  },
+): Promise<{ items: FactTableInterface[]; total: number }> {
+  const baseQuery = { organization: context.org.id, ...options.filter };
+
+  // Run count and paginated query in parallel
+  const [total, docs] = await Promise.all([
+    FactTableModel.countDocuments(baseQuery),
+    FactTableModel.find(baseQuery)
+      .sort({ id: 1 })
+      .skip(options.skip)
+      .limit(options.limit),
+  ]);
+
+  return {
+    items: docs.map((doc) => toInterface(doc)),
+    total,
+  };
+}
+
 export async function getFactTablesForDatasource(
   context: ReqContext,
   datasource: string,

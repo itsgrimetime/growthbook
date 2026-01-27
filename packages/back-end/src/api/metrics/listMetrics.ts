@@ -1,41 +1,49 @@
 import { ListMetricsResponse } from "shared/types/openapi";
 import { listMetricsValidator } from "shared/validators";
 import { getDataSourcesByOrganization } from "back-end/src/models/DataSourceModel";
-import { getMetricsByOrganization } from "back-end/src/models/MetricModel";
+import { getMetricsPaginated } from "back-end/src/models/MetricModel";
 import { toMetricApiInterface } from "back-end/src/services/experiments";
 import {
-  applyFilter,
-  applyPagination,
+  buildPaginationFields,
   createApiRequestHandler,
+  getPaginationOptions,
 } from "back-end/src/util/handler";
 
 export const listMetrics = createApiRequestHandler(listMetricsValidator)(async (
   req,
 ): Promise<ListMetricsResponse> => {
-  const metrics = await getMetricsByOrganization(req.context);
+  // Build MongoDB filter for better performance
+  const filter: Record<string, unknown> = {};
 
-  const datasources = await getDataSourcesByOrganization(req.context);
+  if (req.query.datasourceId) {
+    filter.datasource = req.query.datasourceId;
+  }
+  if (req.query.projectId) {
+    // Match if: projects array contains the projectId OR projects is empty/missing
+    // (empty projects means the metric is available to all projects)
+    filter.$or = [
+      { projects: req.query.projectId },
+      { projects: { $size: 0 } },
+      { projects: { $exists: false } },
+    ];
+  }
 
-  // TODO: Move sorting/limiting to the database query for better performance
-  const { filtered, returnFields } = applyPagination(
-    metrics
-      .filter(
-        (metric) =>
-          applyFilter(req.query.datasourceId, metric.datasource) &&
-          applyFilter(req.query.projectId, metric.projects, true),
-      )
-      .sort((a, b) => a.id.localeCompare(b.id)),
-    req.query,
-  );
+  const { limit, offset } = getPaginationOptions(req.query);
+
+  // Fetch datasources and paginated metrics in parallel
+  const [datasources, { items, total }] = await Promise.all([
+    getDataSourcesByOrganization(req.context),
+    getMetricsPaginated(req.context, { filter, limit, skip: offset }),
+  ]);
 
   return {
-    metrics: filtered.map((metric) =>
+    metrics: items.map((metric) =>
       toMetricApiInterface(
         req.organization,
         metric,
         datasources.find((ds) => ds.id === metric.datasource) || null,
       ),
     ),
-    ...returnFields,
+    ...buildPaginationFields({ items, total, limit, offset }),
   };
 });

@@ -159,6 +159,44 @@ export async function validateIsSuperUserRequest(req: {
 }
 
 /**
+ * Pagination options for database-level pagination
+ */
+export interface PaginationOptions {
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Result from a paginated database query
+ */
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Validate and extract pagination options from query params
+ */
+export function getPaginationOptions(query: {
+  limit?: number | undefined;
+  offset?: number | undefined;
+}): PaginationOptions {
+  const limit = query.limit || 10;
+  const offset = query.offset || 0;
+
+  if (isNaN(limit) || limit < 1 || limit > 100) {
+    throw new Error("Pagination limit must be between 1 and 100");
+  }
+  if (isNaN(offset) || offset < 0) {
+    throw new Error("Invalid pagination offset");
+  }
+
+  return { limit, offset };
+}
+
+/**
  * Given an already paginated list of items, return the pagination fields
  */
 export function getPaginationReturnFields<T>(
@@ -179,6 +217,18 @@ export function getPaginationReturnFields<T>(
     hasMore,
     nextOffset: hasMore ? nextOffset : null,
   };
+}
+
+/**
+ * Build pagination return fields from a paginated result
+ */
+export function buildPaginationFields<T>(
+  result: PaginatedResult<T>,
+): ApiPaginationFields {
+  return getPaginationReturnFields(result.items, result.total, {
+    limit: result.limit,
+    offset: result.offset,
+  });
 }
 
 /**
